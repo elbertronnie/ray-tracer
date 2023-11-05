@@ -1,5 +1,6 @@
 mod vertex;
 mod camera;
+mod sphere;
 
 use wgpu::{
     RenderPipeline, Buffer, ShaderSource, VertexState, ColorTargetState, 
@@ -14,6 +15,7 @@ use wgpu::{
 use winit::dpi::PhysicalSize;
 use vertex::Vertex;
 use camera::Camera;
+use sphere::SphereStorage;
 
 const RECTANGLE_VERTICES: &[Vertex] = &[
     Vertex::new([ 1.0,  1.0], [1.0, 0.0]),
@@ -30,6 +32,7 @@ pub struct Pipeline {
     size: wgpu::Extent3d,
     camera: Camera,
     camera_buffer: Buffer,
+    objects_buffer: Buffer,
     vertex_buffer: Buffer,
     camera_bind_group: BindGroup,
     compute_bind_group: BindGroup,
@@ -74,14 +77,29 @@ impl Pipeline {
             ..Default::default()
         });
 
-        let camera = Camera { color: [1.0, 0.0, 0.0, 0.0] };
-
-        println!("Size of Camera: {camera:?}");
+        let camera = Camera::default();
 
         let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Camera Buffer Descriptor"),
-            contents: bytemuck::cast_slice(&[camera]),
+            contents: bytemuck::cast_slice(&[camera.into_uniform()]),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
+        });
+
+        let spheres = &[
+            SphereStorage::new([10.0, 0.0, 0.0], [1.0, 0.0, 0.0], 1.0),
+            SphereStorage::new_random(),
+            SphereStorage::new_random(),
+            SphereStorage::new_random(),
+            SphereStorage::new_random(),
+            SphereStorage::new_random(),
+            SphereStorage::new_random(),
+            SphereStorage::new_random(),
+        ];
+
+        let objects_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Objects Buffer Descriptor"),
+            contents: bytemuck::cast_slice(spheres),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE,
         });
 
         let shader = device.create_shader_module(ShaderModuleDescriptor {
@@ -135,6 +153,17 @@ impl Pipeline {
                         },
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+
                 ],
                 label: Some("camera_bind_group_layout"),
             });
@@ -145,6 +174,10 @@ impl Pipeline {
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: camera_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: objects_buffer.as_entire_binding(),
                 }
             ],
             label: Some("camera_bind_group"),
@@ -256,6 +289,7 @@ impl Pipeline {
             camera,
             vertex_buffer,
             camera_buffer,
+            objects_buffer,
             camera_bind_group,
             compute_bind_group,
             compute_pipeline,
@@ -302,9 +336,11 @@ impl Pipeline {
         }
     }
 
+    pub fn camera(&mut self) -> &mut Camera {
+        &mut self.camera
+    }
+
     pub fn update_camera(&mut self, queue: &wgpu::Queue) {
-        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera]));
+        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera.into_uniform()]));
     }
 }
-
-

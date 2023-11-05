@@ -7,8 +7,8 @@ use wgpu::{
     CommandEncoderDescriptor,
 };
 use winit::{
-    dpi::PhysicalSize,
-    event::WindowEvent,
+    dpi::{PhysicalSize, PhysicalPosition},
+    event::{WindowEvent, VirtualKeyCode, ElementState, KeyboardInput},
     window::Window,
 };
 use pipeline::Pipeline;
@@ -20,6 +20,7 @@ pub struct GpuState {
     queue: Queue,
     config: SurfaceConfiguration,
     size: PhysicalSize<u32>,
+    prev_cursor: Option<PhysicalPosition<f64>>,
     window: Window,
     pipeline: Pipeline,
 }
@@ -98,6 +99,7 @@ impl GpuState {
             queue,
             config,
             size,
+            prev_cursor: None,
             window,
             pipeline,
         }
@@ -121,7 +123,71 @@ impl GpuState {
     }
     
     pub fn input(&mut self, event: &WindowEvent) -> bool {
-        false
+        match event {
+            WindowEvent::KeyboardInput {
+                input: KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(VirtualKeyCode::Up),
+                    ..
+                },
+                ..
+            } => {
+                self.pipeline.camera().forwards();
+                true
+            },
+            WindowEvent::KeyboardInput {
+                input: KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(VirtualKeyCode::Down),
+                    ..
+                },
+                ..
+            } => {
+                self.pipeline.camera().backwards();
+                true
+            },
+            WindowEvent::KeyboardInput {
+                input: KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(VirtualKeyCode::Right),
+                    ..
+                },
+                ..
+            } => {
+                self.pipeline.camera().rightwards();
+                true
+            },
+            WindowEvent::KeyboardInput {
+                input: KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(VirtualKeyCode::Left),
+                    ..
+                },
+                ..
+            } => {
+                self.pipeline.camera().leftwards();
+                true
+            },
+            WindowEvent::CursorLeft { .. } => {
+                self.prev_cursor = None;
+                true
+            },
+            WindowEvent::CursorEntered { .. } => {
+                self.prev_cursor = None;
+                true
+            },
+            WindowEvent::CursorMoved { position, .. } => {
+                if let Some(s) = self.prev_cursor {
+                    let pct_x = (position.x - s.x)/(self.size.width as f64);
+                    self.pipeline.camera().rotate_rightwards(pct_x as f32);
+                    let pct_y = (position.y - s.y)/(self.size.height as f64);
+                    self.pipeline.camera().rotate_upwards(pct_y as f32);
+                }
+                self.prev_cursor = Some(*position);
+                true
+            },
+            _ => false,
+        }
     }
 
     pub fn update(&mut self) {
